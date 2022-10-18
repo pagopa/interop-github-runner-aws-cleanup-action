@@ -1,5 +1,5 @@
-name: "Create GitHub self hosted runner"
-description: "Create a GitHub self hosted runner on Azure"
+name: "Clear GitHub self hosted runner"
+description: "Clear a GitHub self hosted runner on Azure"
 
 inputs:
   client_id:
@@ -11,24 +11,15 @@ inputs:
   subscription_id:
     description: "Azure subscription Id"
     required: true
-  container_app_environment_name:
-    description: "Azure container app environment name"
-    required: true
   resource_group_name:
     description: "Azure container app environment resource group name"
     required: true
   pat_token:
     description: "GitHub PAT token to access to APIs to manage self hosted runner"
     required: true
-  self_hosted_runner_image_tag:
-    description: "Self hosted runner image tag from https://github.com/pagopa/github-self-hosted-runner/pkgs/container/github-self-hosted-runner"
-    required: true
-    default: "v1.0.3@sha256:b1a04fdd800f06436b9dee0311292b640d8c2af333ce983d1877b7164b475c30"
-
-outputs:
   runner_name:
-    value: ${{ steps.create_github_runner.outputs.AZURE_CONTAINER_APP_NAME }}
-    description: 'Whether a new release was published'
+    description: "GitHub runner name"
+    required: true
 
 runs:
   using: "composite"
@@ -41,47 +32,53 @@ runs:
           tenant-id: ${{ inputs.tenant_id }}
           subscription-id: ${{ inputs.subscription_id }}
 
-      - name: Create GitHub Runner
-        id: create_github_runner
+      - name: Clear GitHub Runner
         shell: bash
+        id: clear_github_runner
         run: |
-          TIMESTAMP=$(date +%s)
-          SELF_HOSTED_RUNNER_IMAGE="ghcr.io/pagopa/github-self-hosted-runner:${{ inputs.self_hosted_runner_image_tag }}"
-
-          AZURE_RESOURCE_GROUP_NAME="${{ inputs.resource_group_name }}"
-          AZURE_CONTAINER_APP_ENVIRONMENT_NAME="${{ inputs.container_app_environment_name }}"
-          AZURE_CONTAINER_APP_NAME="runner-${{ github.run_id }}${TIMESTAMP}"
+          AZURE_RESORCE_GROUP_NAME="${{ inputs.resource_group_name }}"
+          AZURE_CONTAINER_APP_NAME="${{ inputs.runner_name }}"
           echo "[INFO] AZURE_CONTAINER_APP_NAME: ${AZURE_CONTAINER_APP_NAME}"
-          echo "::set-output name=AZURE_CONTAINER_APP_NAME::${AZURE_CONTAINER_APP_NAME}"
-
-          GITHUB_TOKEN=$(curl \
-            -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ inputs.pat_token }}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/runners/registration-token | jq ".token" -r)
 
           az config set extension.use_dynamic_install=yes_without_prompt
 
-          az containerapp create \
+          az containerapp delete \
             --name "${AZURE_CONTAINER_APP_NAME}" \
-            --resource-group "${AZURE_RESOURCE_GROUP_NAME}" \
-            --image "${SELF_HOSTED_RUNNER_IMAGE}" \
-            --environment "${AZURE_CONTAINER_APP_ENVIRONMENT_NAME}" \
-            --secrets github-token="${GITHUB_TOKEN}" \
-            --env-vars \
-            GITHUB_REPOSITORY="https://github.com/${{ github.repository }}" \
-            GITHUB_TOKEN=secretref:github-token
+            --resource-group "${AZURE_RESORCE_GROUP_NAME}" \
+            --yes
+
+          echo "[INFO] AZURE_CONTAINER_APP_NAME deleted"
 
           sleep 30
 
-          GITHUB_RUNNER_ID=$(curl \
+          # sometimes delete operation needs more time to works,
+          # so we retry the operation for 60 seconds
+
+          START_TIME=$(date +%s)
+          while [ $(( $(date +%s) - 60 )) -lt $START_TIME ]; do
+
+            GITHUB_RUNNER_ID=$(curl \
               -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer ${{ inputs.pat_token }}" \
               https://api.github.com/repos/${{ github.repository }}/actions/runners | jq '.runners | map(select(.name | startswith("'${AZURE_CONTAINER_APP_NAME}'"))) | .[].id' -r)
 
-          curl \
-            -X PUT \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ inputs.pat_token }}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/runners/${GITHUB_RUNNER_ID}/labels \
-            -d '{"labels":["'${AZURE_CONTAINER_APP_NAME}'"]}'
+            # [ -z "$GITHUB_RUNNER_ID" ] && echo "no runners found" && break
+            if [ -z "$GITHUB_RUNNER_ID" ]
+            then
+              echo "[INFO] GITHUB_RUNNER_ID is empty"
+              break
+            fi
+
+            echo "[INFO] GITHUB_RUNNER_ID: ${GITHUB_RUNNER_ID} is NOT empty"
+
+            curl \
+              -X DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ inputs.pat_token }}" \
+              https://api.github.com/repos/${{ github.repository }}/actions/runners/${GITHUB_RUNNER_ID}
+
+            sleep 66
+
+          done
+
+          echo "[INFO] GITHUB_RUNNER_ID deleted"
