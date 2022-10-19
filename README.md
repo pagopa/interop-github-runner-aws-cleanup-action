@@ -1,1 +1,1 @@
-# github-self-hosted-runner-create-action
+# github-self-hosted-runner-cleanup-action
