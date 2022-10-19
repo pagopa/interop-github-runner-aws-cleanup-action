@@ -14,11 +14,11 @@ inputs:
   resource_group_name:
     description: "Azure container app environment resource group name"
     required: true
-  pat_token:
-    description: "GitHub PAT token to access to APIs to manage self hosted runner"
-    required: true
   runner_name:
     description: "GitHub runner name"
+    required: true
+  pat_token:
+    description: "GitHub PAT token to access to APIs to manage self hosted runner"
     required: true
 
 runs:
@@ -77,7 +77,7 @@ runs:
               -H "Authorization: Bearer ${{ inputs.pat_token }}" \
               https://api.github.com/repos/${{ github.repository }}/actions/runners/${GITHUB_RUNNER_ID}
 
-            sleep 66
+            sleep 6
 
           done
 
