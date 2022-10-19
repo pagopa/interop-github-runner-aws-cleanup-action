@@ -1,5 +1,5 @@
-name: "Clear GitHub self hosted runner"
-description: "Clear a GitHub self hosted runner on Azure"
+name: "Cleanup GitHub self hosted runner"
+description: "Cleanup a GitHub self hosted runner on Azure"
 
 inputs:
   client_id:
@@ -32,9 +32,9 @@ runs:
           tenant-id: ${{ inputs.tenant_id }}
           subscription-id: ${{ inputs.subscription_id }}
 
-      - name: Clear GitHub Runner
+      - name: Cleanup GitHub Runner
         shell: bash
-        id: clear_github_runner
+        id: cleanup_github_runner
         run: |
           AZURE_RESORCE_GROUP_NAME="${{ inputs.resource_group_name }}"
           AZURE_CONTAINER_APP_NAME="${{ inputs.runner_name }}"
