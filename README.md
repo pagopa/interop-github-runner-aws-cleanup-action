@@ -1,1 +1,1 @@
-# github-self-hosted-runner-cleanup-action
+# github-self-hosted-runner-azure-cleanup-action
