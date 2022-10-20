@@ -13,19 +13,21 @@ on:
 jobs:
   release:
     name: Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
         id: checkout
-        uses: actions/checkout@v2
+        # from https://github.com/actions/checkout/commits/main
+        uses: actions/checkout@1f9a0c22da41e6ebfa534300ef656657ea2c6707
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - name: Release
         id: release
-        uses: cycjimmy/semantic-release-action@v2
+        # from https://github.com/cycjimmy/semantic-release-action/commits/main
+        uses: cycjimmy/semantic-release-action@bdd914ff2423e2792c73475f11e8da603182f32d
         with:
           semantic_version: 18.0.0
           extra_plugins: |
@@ -33,26 +35,3 @@ jobs:
             @semantic-release/git@10.0.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Log in to the Container registry
-        id: docker_login
-        if: steps.release.outputs.new_release_published == 'true'
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        id: docker_build_push
-        if: steps.release.outputs.new_release_published == 'true'
-        uses: docker/build-push-action@v3
-        with:
-          context: .
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:v${{ steps.release.outputs.new_release_version }}
-          labels: |
-            maintainer=https://pagopa.it
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
