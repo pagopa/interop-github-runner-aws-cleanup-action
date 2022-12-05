@@ -2,82 +2,74 @@ name: "Cleanup GitHub self hosted runner"
 description: "Cleanup a GitHub self hosted runner on Azure"
 
 inputs:
-  client_id:
-    description: "Azure service principal App Id"
+  aws_region:
+    description: "AWS region code"
     required: true
-  tenant_id:
-    description: "Azure tenant id"
+  iam_role_arn:
+    description: "ARN of the IAM role to assume"
     required: true
-  subscription_id:
-    description: "Azure subscription Id"
-    required: true
-  resource_group_name:
-    description: "Azure container app environment resource group name"
+  ecs_cluster_name:
+    description: "ECS cluster"
     required: true
   runner_name:
-    description: "GitHub runner name"
+    description: "Name of the GitHub self-hosted runner to stop"
     required: true
   pat_token:
-    description: "GitHub PAT token to access to APIs to manage self hosted runner"
+    description: "GitHub PAT token to access APIs to manage self hosted runner"
     required: true
 
 runs:
   using: "composite"
   steps:
-      - name: Login
-        id: login
-        uses: azure/login@v1
-        with:
-          client-id: ${{ inputs.client_id }}
-          tenant-id: ${{ inputs.tenant_id }}
-          subscription-id: ${{ inputs.subscription_id }}
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-region: ${{ inputs.aws_region }}
+        role-to-assume: ${{ inputs.iam_role_arn }}
 
-      - name: Cleanup GitHub Runner
-        shell: bash
-        id: cleanup_github_runner
-        run: |
-          AZURE_RESORCE_GROUP_NAME="${{ inputs.resource_group_name }}"
-          AZURE_CONTAINER_APP_NAME="${{ inputs.runner_name }}"
-          echo "[INFO] AZURE_CONTAINER_APP_NAME: ${AZURE_CONTAINER_APP_NAME}"
+    - name: Cleanup GitHub Runner
+      shell: bash
+      id: cleanup_github_runner
+      run: |
+        aws ecs stop-task \
+          --cluster ${{ inputs.ecs_cluster_name }} \
+          --task ${{ inputs.runner_name }}
 
-          az config set extension.use_dynamic_install=yes_without_prompt
+        echo "[INFO] ECS task ${{ inputs.runner_name }} stopped"
 
-          az containerapp delete \
-            --name "${AZURE_CONTAINER_APP_NAME}" \
-            --resource-group "${AZURE_RESORCE_GROUP_NAME}" \
-            --yes
+        GITHUB_RUNNER_ID=$(curl -s \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ inputs.pat_token }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/runners \
+          | jq '.runners | map(select(.name == "'${{ inputs.runner_name }}'")) | .[].id' -r)
 
-          echo "[INFO] AZURE_CONTAINER_APP_NAME deleted"
+        curl -s \
+          -X DELETE \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ inputs.pat_token }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/runners/${GITHUB_RUNNER_ID}
 
-          sleep 30
+        START_TIME=$(date +%s)
+        while [ $(( $(date +%s) - 120 )) -lt $START_TIME ]; do
 
-          # sometimes delete operation needs more time to works,
-          # so we retry the operation for 5 minutes (300 seconds)
+          echo "[INFO] Waiting for runner ${{ inputs.runner_name }} to be deleted from Github"
 
-          START_TIME=$(date +%s)
-          while [ $(( $(date +%s) - 300 )) -lt $START_TIME ]; do
+          GITHUB_RUNNER_ID=$(curl -s \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ inputs.pat_token }}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/runners \
+            | jq '.runners | map(select(.name == "'${{ inputs.runner_name }}'")) | .[].id' -r)
 
-            GITHUB_RUNNER_ID=$(curl \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${{ inputs.pat_token }}" \
-              https://api.github.com/repos/${{ github.repository }}/actions/runners | jq '.runners | map(select(.name | startswith("'${AZURE_CONTAINER_APP_NAME}'"))) | .[].id' -r)
+          if [ -z "$GITHUB_RUNNER_ID" ]; then
+            echo "[INFO] Runner ${{ inputs.runner_name }} has been deleted"
+            break
+          fi
 
-            if [ -z "$GITHUB_RUNNER_ID" ]
-            then
-              echo "[INFO] GITHUB_RUNNER_ID is empty"
-              break
-            fi
+          sleep 10
 
-            echo "[INFO] GITHUB_RUNNER_ID: ${GITHUB_RUNNER_ID} is NOT empty"
+        done
 
-            curl \
-              -X DELETE \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${{ inputs.pat_token }}" \
-              https://api.github.com/repos/${{ github.repository }}/actions/runners/${GITHUB_RUNNER_ID}
-
-            sleep 5
-
-          done
-
-          echo "[INFO] GITHUB_RUNNER_ID deleted"
+        if [ -n "$GITHUB_RUNNER_ID" ]; then
+          echo "[ERROR] Runner ${{ inputs.runner_name }} was not deleted from Github" >&2
+          exit 1
+        fi
