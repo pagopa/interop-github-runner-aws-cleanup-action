@@ -33,7 +33,7 @@ runs:
       run: |
         aws ecs stop-task \
           --cluster ${{ inputs.ecs_cluster_name }} \
-          --task ${{ inputs.runner_name }}
+          --task ${{ inputs.runner_name }} > /dev/null
 
         echo "[INFO] ECS task ${{ inputs.runner_name }} stopped"
 
