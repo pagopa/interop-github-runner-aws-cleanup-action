@@ -1,5 +1,5 @@
 name: "Cleanup GitHub self hosted runner"
-description: "Cleanup a GitHub self hosted runner on Azure"
+description: "Cleanup a GitHub self hosted runner on AWS"
 
 inputs:
   aws_region:
@@ -10,9 +10,6 @@ inputs:
     required: true
   ecs_cluster_name:
     description: "ECS cluster"
-    required: true
-  runner_name:
-    description: "Name of the GitHub self-hosted runner to stop"
     required: true
   pat_token:
     description: "GitHub PAT token to access APIs to manage self hosted runner"
@@ -31,17 +28,28 @@ runs:
       shell: bash
       id: cleanup_github_runner
       run: |
-        aws ecs stop-task \
-          --cluster ${{ inputs.ecs_cluster_name }} \
-          --task ${{ inputs.runner_name }} > /dev/null
+        set -eo pipefail
 
-        echo "[INFO] ECS task ${{ inputs.runner_name }} stopped"
+        RUNNER_NAME="${{ github.run_id }}-${{ matrix.index }}"
 
         GITHUB_RUNNER_ID=$(curl -s \
           -H "Accept: application/vnd.github+json" \
           -H "Authorization: Bearer ${{ inputs.pat_token }}" \
           https://api.github.com/repos/${{ github.repository }}/actions/runners \
-          | jq '.runners | map(select(.name == "'${{ inputs.runner_name }}'")) | .[].id' -r)
+          | jq '.runners | map(select(.name == "'${RUNNER_NAME}'")) | .[].id' -r)
+
+        ECS_TASK_ID=$(curl -s \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ inputs.pat_token }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/runners/${GITHUB_RUNNER_ID} \
+          | jq -r '.labels[] | select(.name | startswith("task_id:")) | .name' \
+          | cut -d: -f2)
+
+        aws ecs stop-task \
+          --cluster ${{ inputs.ecs_cluster_name }} \
+          --task ${ECS_TASK_ID} > /dev/null
+
+        echo "[INFO] ECS task ${ECS_TASK_ID} stopped"
 
         curl -s \
           -X DELETE \
@@ -58,10 +66,10 @@ runs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ inputs.pat_token }}" \
             https://api.github.com/repos/${{ github.repository }}/actions/runners \
-            | jq '.runners | map(select(.name == "'${{ inputs.runner_name }}'")) | .[].id' -r)
+            | jq '.runners | map(select(.name == "'${RUNNER_NAME}'")) | .[].id' -r)
 
           if [ -z "$GITHUB_RUNNER_ID" ]; then
-            echo "[INFO] Runner ${{ inputs.runner_name }} has been deleted"
+            echo "[INFO] Runner ${RUNNER_NAME} has been deleted"
             break
           fi
 
@@ -70,6 +78,6 @@ runs:
         done
 
         if [ -n "$GITHUB_RUNNER_ID" ]; then
-          echo "[ERROR] Runner ${{ inputs.runner_name }} was not deleted from Github" >&2
+          echo "[ERROR] Runner ${RUNNER_NAME} was not deleted from Github" >&2
           exit 1
         fi
