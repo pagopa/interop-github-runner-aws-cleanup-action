@@ -14,6 +14,9 @@ inputs:
   pat_token:
     description: "GitHub PAT token to access APIs to manage self hosted runner"
     required: true
+  ecs_task_id:
+    description: "ECS Task id"
+    required: false
 
 runs:
   using: "composite"
@@ -38,12 +41,19 @@ runs:
           https://api.github.com/repos/${{ github.repository }}/actions/runners \
           | jq '.runners | map(select(.name == "'${RUNNER_NAME}'")) | .[].id' -r)
 
-        ECS_TASK_ID=$(curl -s \
-          -H "Accept: application/vnd.github+json" \
-          -H "Authorization: Bearer ${{ inputs.pat_token }}" \
-          https://api.github.com/repos/${{ github.repository }}/actions/runners/${GITHUB_RUNNER_ID} \
-          | jq -r '.labels[] | select(.name | startswith("task_id:")) | .name' \
-          | cut -d: -f2)
+        ECS_TASK_ID=""
+
+        if [[ -n "${{ inputs.ecs_task_id }}" ]]; then
+          ECS_TASK_ID=${{ inputs.ecs_task_id }}
+          echo "[INFO] Use ECS Task id from action input ${{ inputs.ecs_task_id }}"
+        else
+          ECS_TASK_ID=$(curl -s \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ inputs.pat_token }}" \
+            https://api.github.com/repos/${{ github.repository }}/actions/runners/${GITHUB_RUNNER_ID} \
+            | jq -r '.labels[] | select(.name | startswith("task_id:")) | .name' \
+            | cut -d: -f2)
+        fi
 
         aws ecs stop-task \
           --cluster ${{ inputs.ecs_cluster_name }} \
