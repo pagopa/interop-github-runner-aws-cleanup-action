@@ -14,9 +14,6 @@ inputs:
   pat_token:
     description: "GitHub PAT token to access APIs to manage self hosted runner"
     required: true
-  ecs_task_id:
-    description: "ECS Task id"
-    required: false
 
 runs:
   using: "composite"
@@ -26,10 +23,32 @@ runs:
       with:
         aws-region: ${{ inputs.aws_region }}
         role-to-assume: ${{ inputs.iam_role_arn }}
-
-    - name: Cleanup GitHub Runner
+    - uses: actions/checkout@v4
+    - name: Download ecs_task_id artifact
+      uses: actions/download-artifact@v4
+      with:
+        path: ${{ matrix.index }}_ecs_task_id
+        name: ${{ matrix.index }}_ecs_task_id
+        merge-multiple: true
+    - name: Get ECS Task Id
+      id: get_ecs_task_id
+      env:
+        index: ${{ matrix.index }}
       shell: bash
+      run: |
+        set -eou pipefail
+
+        artifact=$(ls -l ${index}_ecs_task_id | grep ${index})
+
+        if [[ -n $artifact ]]; then
+          ecs_task_id=$(echo $artifact | awk -F"_" '{print $2}')
+          echo "ecs_task_id=$ecs_task_id" >> $GITHUB_OUTPUT
+        fi
+    - name: Cleanup GitHub Runner
       id: cleanup_github_runner
+      env:
+        ECS_TASK_ID_ENV: ${{ steps.get_ecs_task_id.outputs.ecs_task_id }}
+      shell: bash
       run: |
         set -eo pipefail
 
@@ -43,9 +62,9 @@ runs:
 
         ECS_TASK_ID=""
 
-        if [[ -n "${{ inputs.ecs_task_id }}" ]]; then
-          ECS_TASK_ID=${{ inputs.ecs_task_id }}
-          echo "[INFO] Use ECS Task id from action input ${{ inputs.ecs_task_id }}"
+        if [[ -n "${ECS_TASK_ID_ENV}" ]]; then
+          ECS_TASK_ID=${ECS_TASK_ID_ENV}
+          echo "[INFO] Use ECS Task id from artifact ${ECS_TASK_ID_ENV}"
         else
           ECS_TASK_ID=$(curl -s \
             -H "Accept: application/vnd.github+json" \
