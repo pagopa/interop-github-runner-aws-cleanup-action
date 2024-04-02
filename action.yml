@@ -14,6 +14,10 @@ inputs:
   pat_token:
     description: "GitHub PAT token to access APIs to manage self hosted runner"
     required: true
+  environment:
+    description: "Target environment on which the Github Runner will execute tasks"
+    default: "dev"
+    required: false
 
 runs:
   using: "composite"
@@ -27,18 +31,19 @@ runs:
     - name: Download ecs_task_id artifact
       uses: actions/download-artifact@v4
       with:
-        path: ${{ matrix.index }}_ecs_task_id
-        name: ${{ matrix.index }}_ecs_task_id
+        path: ${{ matrix.index }}_${{ inputs.environment }}_ecs_task_id
+        name: ${{ matrix.index }}_${{ inputs.environment }}_ecs_task_id
         merge-multiple: true
     - name: Get ECS Task Id
       id: get_ecs_task_id
       env:
         index: ${{ matrix.index }}
+        environment: ${{ inputs.environment }}
       shell: bash
       run: |
         set -eou pipefail
 
-        artifact=$(ls -l ${index}_ecs_task_id | grep ${index})
+        artifact=$(ls -l ${index}_${environment}_ecs_task_id | grep "${index}_${environment}")
 
         if [[ -n $artifact ]]; then
           ecs_task_id=$(echo $artifact | awk -F"_" '{print $2}')
