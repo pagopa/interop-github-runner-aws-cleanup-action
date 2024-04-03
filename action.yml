@@ -46,7 +46,7 @@ runs:
         artifact=$(ls -l ${index}_${environment}_ecs_task_id | grep "${index}_${environment}")
 
         if [[ -n $artifact ]]; then
-          ecs_task_id=$(echo $artifact | awk -F"_" '{print $2}')
+          ecs_task_id=$(echo $artifact | awk -F"${index}_${environment}_" '{print $2}')
           echo "ecs_task_id=$ecs_task_id" >> $GITHUB_OUTPUT
         fi
     - name: Cleanup GitHub Runner
