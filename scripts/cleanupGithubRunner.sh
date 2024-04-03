@@ -2,12 +2,12 @@
 
 set -eo pipefail
 
-RUNNER_NAME="${{ github.run_id }}-${{ matrix.index }}"
+RUNNER_NAME="${GITHUB_RUN_ID}-${MATRIX_INDEX}"
 
 GITHUB_RUNNER_ID=$(curl -s \
   -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer ${{ inputs.pat_token }}" \
-  https://api.github.com/repos/${{ github.repository }}/actions/runners \
+  -H "Authorization: Bearer ${PAT_TOKEN}" \
+  https://api.github.com/repos/${GITHUB_REPO}/actions/runners \
   | jq '.runners | map(select(.name == "'${RUNNER_NAME}'")) | .[].id' -r)
 
 ECS_TASK_ID=""
@@ -18,14 +18,14 @@ if [[ -n "${ECS_TASK_ID_ENV}" ]]; then
 else
   ECS_TASK_ID=$(curl -s \
     -H "Accept: application/vnd.github+json" \
-    -H "Authorization: Bearer ${{ inputs.pat_token }}" \
-    https://api.github.com/repos/${{ github.repository }}/actions/runners/${GITHUB_RUNNER_ID} \
+    -H "Authorization: Bearer ${PAT_TOKEN}" \
+    https://api.github.com/repos/${GITHUB_REPO}/actions/runners/${GITHUB_RUNNER_ID} \
     | jq -r '.labels[] | select(.name | startswith("task_id:")) | .name' \
     | cut -d: -f2)
 fi
 
 aws ecs stop-task \
-  --cluster ${{ inputs.ecs_cluster_name }} \
+  --cluster ${ECS_CLUSTER_NAME} \
   --task ${ECS_TASK_ID} > /dev/null
 
 echo "[INFO] ECS task ${ECS_TASK_ID} stopped"
@@ -33,18 +33,18 @@ echo "[INFO] ECS task ${ECS_TASK_ID} stopped"
 curl -s \
   -X DELETE \
   -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer ${{ inputs.pat_token }}" \
-  https://api.github.com/repos/${{ github.repository }}/actions/runners/${GITHUB_RUNNER_ID}
+  -H "Authorization: Bearer ${PAT_TOKEN}" \
+  https://api.github.com/repos/${GITHUB_REPO}/actions/runners/${GITHUB_RUNNER_ID}
 
 START_TIME=$(date +%s)
 while [ $(( $(date +%s) - 120 )) -lt $START_TIME ]; do
 
-  echo "[INFO] Waiting for runner ${{ inputs.runner_name }} to be deleted from Github"
+  echo "[INFO] Waiting for runner ${RUNNER_NAME} to be deleted from Github"
 
   GITHUB_RUNNER_ID=$(curl -s \
     -H "Accept: application/vnd.github+json" \
-    -H "Authorization: Bearer ${{ inputs.pat_token }}" \
-    https://api.github.com/repos/${{ github.repository }}/actions/runners \
+    -H "Authorization: Bearer ${PAT_TOKEN}" \
+    https://api.github.com/repos/${GITHUB_REPO}/actions/runners \
     | jq '.runners | map(select(.name == "'${RUNNER_NAME}'")) | .[].id' -r)
 
   if [ -z "$GITHUB_RUNNER_ID" ]; then
