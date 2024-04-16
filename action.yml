@@ -42,6 +42,11 @@ runs:
       run: |
         set -eou pipefail
 
+        if [[ -z "$environment" ]]; then
+          echo "Error: Environment is required"
+          exit 1
+        fi
+
         artifact=$(ls -l ${index}_${environment}_ecs_task_id | grep "${index}_${environment}")
 
         if [[ -n $artifact ]]; then
