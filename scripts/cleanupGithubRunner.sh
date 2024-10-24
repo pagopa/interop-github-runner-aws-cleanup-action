@@ -2,7 +2,7 @@
 
 set -eo pipefail
 
-RUNNER_NAME="${GITHUB_RUN_ID}-${MATRIX_INDEX}"
+RUNNER_NAME="${TARGET_ENV}-${GITHUB_RUN_ID}-${MATRIX_INDEX}"
 
 GITHUB_RUNNER_ID=$(curl -s \
   -H "Accept: application/vnd.github+json" \
