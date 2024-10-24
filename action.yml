@@ -63,5 +63,6 @@ runs:
         GITHUB_REPO: ${{ github.repository }}
         MATRIX_INDEX: ${{ matrix.index }}
         PAT_TOKEN: ${{ inputs.pat_token }}
+        TARGET_ENV: ${{ inputs.environment }}
       run: |
         ${{ github.action_path }}/scripts/cleanupGithubRunner.sh
